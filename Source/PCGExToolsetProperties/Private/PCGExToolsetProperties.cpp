@@ -3,14 +3,32 @@
 
 #include "PCGExToolsetProperties.h"
 
+#include "Mediator/PCGExPropertyMediatorActions.h"
+#include "Mediator/PCGExPropertyMediatorBindings.h"
+#include "Mediator/PCGExPropertyMediatorFormats.h"
+#include "Mediator/PCGExPropertyMediatorGuide.h"
+#include "Mediator/PCGExPropertyMediatorHooks.h"
+#include "Mediator/PCGExPropertyTypeCatalog.h"
+
 void FPCGExToolsetPropertiesModule::StartupModule()
 {
 	IPCGExEditorModuleInterface::StartupModule();
-	// TODO: register the Properties mediator surface (hooks, formats, bindings, actions, guide) once it moves here from PCGExPropertiesEditor.
+
+	// Type catalog, per-type value hooks, struct formats, host bindings, actions, guide.
+	PCGExPropertyCatalog::Startup();
+	PCGExPropertyMediator::RegisterBuiltInHooks();
+	PCGExPropertyMediatorFormats::Register(MediatorDomain);
+	PCGExPropertyMediatorBindings::Register(MediatorDomain);
+	PCGExPropertyMediatorActions::Register(MediatorDomain);
+	PCGExPropertyMediatorGuide::Register(MediatorDomain);
 }
 
 void FPCGExToolsetPropertiesModule::ShutdownModule()
 {
+	MediatorDomain.Reset();
+	PCGExPropertyMediator::UnregisterBuiltInHooks();
+	PCGExPropertyCatalog::Shutdown();
+
 	IPCGExEditorModuleInterface::ShutdownModule();
 }
 

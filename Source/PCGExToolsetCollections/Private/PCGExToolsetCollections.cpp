@@ -3,14 +3,29 @@
 
 #include "PCGExToolsetCollections.h"
 
+#include "Mediator/PCGExCollectionsMediatorBindings.h"
+#include "Mediator/PCGExCollectionsMediatorFormats.h"
+#include "Mediator/PCGExCollectionsMediatorGuide.h"
+#include "Mediator/PCGExCollectionsMediatorHooks.h"
+
 void FPCGExToolsetCollectionsModule::StartupModule()
 {
 	IPCGExEditorModuleInterface::StartupModule();
-	// TODO: register the Collections mediator surface (hooks, formats, bindings, guide) once it moves here from PCGExCollectionsEditor.
+
+	// Value hooks for the collection property types, entry formats (one per registered collection type, siblings
+	// included), the collection / Distribute Tuple bindings and the guide.
+	PCGExCollectionsMediator::RegisterHooks();
+	PCGExCollectionsMediatorFormats::Register(MediatorDomain);
+	PCGExCollectionsMediatorBindings::Register(MediatorDomain);
+	PCGExCollectionsMediatorGuide::Register(MediatorDomain);
 }
 
 void FPCGExToolsetCollectionsModule::ShutdownModule()
 {
+	PCGExCollectionsMediatorFormats::Unregister();
+	MediatorDomain.Reset();
+	PCGExCollectionsMediator::UnregisterHooks();
+
 	IPCGExEditorModuleInterface::ShutdownModule();
 }
 

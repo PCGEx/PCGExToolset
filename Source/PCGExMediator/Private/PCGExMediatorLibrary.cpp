@@ -1,0 +1,260 @@
+// Copyright 2026 Timothé Lapetite and contributors
+// Released under the MIT license https://opensource.org/license/MIT/
+
+#include "PCGExMediatorLibrary.h"
+
+#include "PCGExMediatorDiagnostics.h"
+#include "PCGExMediatorFocus.h"
+#include "PCGExMediatorLookup.h"
+#include "PCGExMediatorTransport.h"
+#include "AssetToolsModule.h"
+#include "Editor.h"
+#include "FileHelpers.h"
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
+#include "Editor/Transactor.h"
+#include "Engine/DataAsset.h"
+#include "Factories/Factory.h"
+#include "IAssetTools.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/PackageName.h"
+#include "UObject/Class.h"
+#include "UObject/Package.h"
+
+namespace PCGExMediatorLibrary
+{
+	FString Failure(const FPCGExMediatorDiagnostics& Diagnostics)
+	{
+		TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
+		Result->SetBoolField(TEXT("ok"), false);
+		Result->SetField(TEXT("diagnostics"), Diagnostics.ToJson());
+		return PCGExMediator::ToString(Result, false);
+	}
+
+	FString Failure(const FString& Message)
+	{
+		FPCGExMediatorDiagnostics Diagnostics;
+		Diagnostics.Add(EPCGExMediatorSeverity::Error, FString(), Message);
+		return Failure(Diagnostics);
+	}
+}
+
+FString UPCGExMediatorLibrary::ListFormats()
+{
+	return PCGExMediator::ToString(PCGExMediator::ListAsJson(), false);
+}
+
+FString UPCGExMediatorLibrary::DescribeFormat(const FString& FormatIdOrClass)
+{
+	const TSharedPtr<FJsonObject> Schema = PCGExMediator::DescribeAny(FormatIdOrClass);
+	if (!Schema.IsValid())
+	{
+		return PCGExMediatorLibrary::Failure(FString::Printf(TEXT("'%s' is neither a registered format, an action, a bound class nor a struct; see ListFormats."), *FormatIdOrClass.TrimStartAndEnd()));
+	}
+	return PCGExMediator::ToString(Schema.ToSharedRef(), false);
+}
+
+FString UPCGExMediatorLibrary::ExportJson(const FString& Target)
+{
+	FPCGExMediatorDiagnostics Diagnostics;
+	TSharedPtr<FJsonObject> Doc;
+	{
+		PCGExMediator::FScope Scope(Diagnostics);
+		if (UObject* Object = PCGExMediator::ResolveTarget(Target.TrimStartAndEnd()))
+		{
+			Doc = PCGExMediator::ExportObject(Object);
+		}
+	}
+	if (!Doc.IsValid()) { return PCGExMediatorLibrary::Failure(Diagnostics); }
+	return PCGExMediator::ToString(Doc.ToSharedRef(), false);
+}
+
+FString UPCGExMediatorLibrary::ImportJson(const FString& Target, const FString& Json)
+{
+	FPCGExMediatorDiagnostics Diagnostics;
+	bool bOk = false;
+	{
+		PCGExMediator::FScope Scope(Diagnostics);
+		if (UObject* Object = PCGExMediator::ResolveTarget(Target.TrimStartAndEnd()))
+		{
+			if (const TSharedPtr<FJsonObject> Doc = PCGExMediator::FromString(Json))
+			{
+				bOk = PCGExMediator::ImportObject(*Doc, Object);
+			}
+		}
+	}
+
+	TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
+	Result->SetBoolField(TEXT("ok"), bOk);
+	Result->SetField(TEXT("diagnostics"), Diagnostics.ToJson());
+	return PCGExMediator::ToString(Result, false);
+}
+
+FString UPCGExMediatorLibrary::CreateAsset(const FString& ClassNameOrPath, const FString& PackagePath, const FString& AssetName)
+{
+	using namespace PCGExMediatorLibrary;
+
+	UClass* Class = PCGExMediator::FindType<UClass>(ClassNameOrPath);
+	if (!Class) { return Failure(FString::Printf(TEXT("class '%s' not found"), *ClassNameOrPath)); }
+	if (Class->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists))
+	{
+		return Failure(FString::Printf(TEXT("class '%s' is abstract or deprecated"), *Class->GetName()));
+	}
+
+	const FString Folder = PackagePath.TrimStartAndEnd();
+	const FString Name = AssetName.TrimStartAndEnd();
+	// Project content only: /Game and project plugins. The engine's read-only roots stop at /Script, /Memory, /Temp and
+	// /Config, so /Engine and engine plugins are refused here by mount point.
+	if (!FPackageName::IsValidLongPackageName(Folder, false)) { return Failure(FString::Printf(TEXT("'%s' is not a long package path such as /Game/Folder"), *Folder.Left(128))); }
+	const FName MountPoint = FPackageName::GetPackageMountPoint(Folder);
+	const TSharedPtr<IPlugin> MountPlugin = IPluginManager::Get().FindPlugin(MountPoint.ToString());
+	if (MountPoint == FName(TEXT("Engine")) || (MountPlugin.IsValid() && MountPlugin->GetLoadedFrom() == EPluginLoadedFrom::Engine))
+	{
+		return Failure(FString::Printf(TEXT("'%s' is engine content; assets are created under /Game or a project plugin"), *Folder.Left(128)));
+	}
+	if (Name.IsEmpty() || !FName::IsValidXName(Name, INVALID_OBJECTNAME_CHARACTERS)) { return Failure(FString::Printf(TEXT("'%s' is not a valid asset name"), *Name.Left(128))); }
+	if (Folder.Len() + Name.Len() + 1 >= NAME_SIZE) { return Failure(TEXT("the package path is longer than a name can be")); }
+
+	// Every refusal the asset tools would raise as a modal dialog is checked here first.
+	IAssetTools& AssetTools = FAssetToolsModule::GetModule().Get();
+	const FString PackageName = Folder / Name;
+	if (FindPackage(nullptr, *PackageName) || FPackageName::DoesPackageExist(PackageName))
+	{
+		return Failure(FString::Printf(TEXT("'%s' already exists"), *PackageName));
+	}
+	if (FEditorFileUtils::IsMapPackageAsset(PackageName))
+	{
+		return Failure(FString::Printf(TEXT("a map named '%s' already exists in that folder"), *Name));
+	}
+	FText Reason;
+	if (!AssetTools.IsObjectPathAllowed(PackageName, &Reason))
+	{
+		return Failure(FString::Printf(TEXT("'%s' is not allowed: %s"), *PackageName, *Reason.ToString()));
+	}
+
+	// The class's own factory when one exists (type-specific setup), the plain NewObject path otherwise.
+	UFactory* FactoryTemplate = nullptr;
+	for (UFactory* Candidate : AssetTools.GetNewAssetFactories())
+	{
+		if (!Candidate || !Candidate->DoesSupportClass(Class)) { continue; }
+		if (Candidate->GetSupportedClass() == Class)
+		{
+			FactoryTemplate = Candidate;
+			break;
+		}
+		if (!FactoryTemplate) { FactoryTemplate = Candidate; }
+	}
+	// Only asset kinds: a class with a New-asset factory, or a DataAsset (every mediator-bound asset is one).
+	if (!FactoryTemplate && !Class->IsChildOf(UDataAsset::StaticClass()))
+	{
+		return Failure(FString::Printf(TEXT("'%s' is not an asset class: no factory creates it and it is not a DataAsset"), *Class->GetName()));
+	}
+	UFactory* Factory = FactoryTemplate ? NewObject<UFactory>(GetTransientPackage(), FactoryTemplate->GetClass()) : nullptr;
+
+	UObject* Asset = AssetTools.CreateAsset(Name, Folder, Class, Factory, FName(TEXT("PCGExMediator")));
+	if (!Asset) { return Failure(FString::Printf(TEXT("the asset tools refused to create %s '%s'"), *Class->GetName(), *PackageName)); }
+
+	TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
+	Result->SetBoolField(TEXT("ok"), true);
+	Result->SetStringField(TEXT("path"), Asset->GetPathName());
+	Result->SetStringField(TEXT("class"), Asset->GetClass()->GetPathName());
+	return PCGExMediator::ToString(Result, false);
+}
+
+FString UPCGExMediatorLibrary::SaveAsset(const FString& ObjectPath)
+{
+	using namespace PCGExMediatorLibrary;
+
+	FPCGExMediatorDiagnostics Diagnostics;
+	UObject* Object = nullptr;
+	{
+		PCGExMediator::FScope Scope(Diagnostics);
+		Object = PCGExMediator::ResolveTarget(ObjectPath.TrimStartAndEnd());
+	}
+	if (!Object) { return Failure(Diagnostics); }
+
+	UPackage* Package = Object->GetOutermost();
+	if (!Package || Package == GetTransientPackage()) { return Failure(FString::Printf(TEXT("'%s' is transient; nothing to save"), *Object->GetPathName())); }
+	if (!UEditorLoadingAndSavingUtils::SavePackages({Package}, false)) { return Failure(FString::Printf(TEXT("saving '%s' failed"), *Package->GetName())); }
+
+	TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
+	Result->SetBoolField(TEXT("ok"), true);
+	Result->SetStringField(TEXT("path"), Object->GetPathName());
+	return PCGExMediator::ToString(Result, false);
+}
+
+FString UPCGExMediatorLibrary::Open(const FString& Target)
+{
+	using namespace PCGExMediatorLibrary;
+
+	FPCGExMediatorDiagnostics Diagnostics;
+	TSharedPtr<FJsonObject> Result;
+	{
+		PCGExMediator::FScope Scope(Diagnostics);
+		if (UObject* Object = PCGExMediator::ResolveTarget(Target.TrimStartAndEnd())) { Result = PCGExMediator::OpenTarget(Object); }
+	}
+	if (!Result.IsValid()) { return Failure(Diagnostics); }
+	Result->SetBoolField(TEXT("ok"), true);
+	Result->SetField(TEXT("diagnostics"), Diagnostics.ToJson());
+	return PCGExMediator::ToString(Result.ToSharedRef(), false);
+}
+
+FString UPCGExMediatorLibrary::Undo()
+{
+	using namespace PCGExMediatorLibrary;
+
+	if (!GEditor || !GEditor->Trans) { return Failure(TEXT("no editor transaction buffer")); }
+	// CanUndo fills its text only with the refusal reason; the title lives in the undo context.
+	FText Reason;
+	if (!GEditor->Trans->CanUndo(&Reason)) { return Failure(FString::Printf(TEXT("nothing to undo %s"), *Reason.ToString())); }
+	const FText Title = GEditor->Trans->GetUndoContext(false).Title;
+	if (!GEditor->UndoTransaction()) { return Failure(FString::Printf(TEXT("undo of '%s' was refused"), *Title.ToString())); }
+
+	TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
+	Result->SetBoolField(TEXT("ok"), true);
+	Result->SetStringField(TEXT("title"), Title.ToString());
+	return PCGExMediator::ToString(Result, false);
+}
+
+FString UPCGExMediatorLibrary::DescribeTarget(const FString& Target)
+{
+	FPCGExMediatorDiagnostics Diagnostics;
+	TSharedPtr<FJsonObject> Description;
+	{
+		PCGExMediator::FScope Scope(Diagnostics);
+		if (const UObject* Object = PCGExMediator::ResolveTarget(Target.TrimStartAndEnd()))
+		{
+			Description = PCGExMediator::DescribeTarget(Object);
+		}
+	}
+	if (!Description.IsValid()) { return PCGExMediatorLibrary::Failure(Diagnostics); }
+	return PCGExMediator::ToString(Description.ToSharedRef(), false);
+}
+
+FString UPCGExMediatorLibrary::RunAction(const FString& ActionId, const FString& Target, const FString& ParamsJson)
+{
+	FPCGExMediatorDiagnostics Diagnostics;
+	TSharedPtr<FJsonObject> Result;
+	{
+		PCGExMediator::FScope Scope(Diagnostics);
+		const FString Trimmed = ParamsJson.TrimStartAndEnd();
+		const TSharedPtr<FJsonObject> Params = Trimmed.IsEmpty() ? nullptr : PCGExMediator::FromString(Trimmed);
+		if (Trimmed.IsEmpty() || Params.IsValid())
+		{
+			if (UObject* Object = PCGExMediator::ResolveTarget(Target.TrimStartAndEnd()))
+			{
+				Result = PCGExMediator::RunAction(PCGExMediator::SafeName(ActionId.TrimStartAndEnd()), Object, Params);
+			}
+		}
+	}
+	if (!Result.IsValid()) { return PCGExMediatorLibrary::Failure(Diagnostics); }
+	Result->SetField(TEXT("diagnostics"), Diagnostics.ToJson());
+	return PCGExMediator::ToString(Result.ToSharedRef(), false);
+}
+
+FString UPCGExMediatorLibrary::DescribeGuides()
+{
+	TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
+	Result->SetArrayField(TEXT("guides"), PCGExMediator::GuidesAsJson());
+	return PCGExMediator::ToString(Result, false);
+}

@@ -1,0 +1,108 @@
+// Copyright 2026 Timothé Lapetite and contributors
+// Released under the MIT license https://opensource.org/license/MIT/
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "PCGExMediatorScope.h"
+#include "StructUtils/InstancedStruct.h"
+
+class FJsonObject;
+class FJsonValue;
+struct FPCGExNumericRange;
+struct FPCGExProperty;
+
+/**
+ * How one FPCGExProperty type travels as JSON. Value hooks carry the authored value (a schema entry's "default",
+ * an override's value); structural hooks carry schema-owned fields on the entry object (enum class, allowed
+ * class, range). Diagnostics go through PCGExMediator::Report at the current path. The hooks a type does not
+ * provide are simply skipped.
+ *
+ * Registered per UScriptStruct from a module's StartupModule; a type with no registration falls back to the
+ * output-type hooks when its GetOutputType() has a dialect shape (the 15 legacy types and Color).
+ */
+struct PCGEXTOOLSETPROPERTIES_API FPCGExPropertyMediatorHooks
+{
+	TFunction<TSharedPtr<FJsonValue>(const FPCGExProperty& Property)> EncodeValue;
+	TFunction<bool(FPCGExProperty& Property, const TSharedPtr<FJsonValue>& Json)> DecodeValue;
+
+	TFunction<void(const FPCGExProperty& Property, FJsonObject& Entry)> EncodeStructural;
+	TFunction<bool(FPCGExProperty& Property, const FJsonObject& Entry)> DecodeStructural;
+
+	/** JSON Schema fragment for the value; Prototype is an instance of the type (may be null). */
+	TFunction<TSharedPtr<FJsonObject>(const FPCGExProperty* Prototype)> DescribeValue;
+
+	/** Adds the structural keys' schemas to an entry's "properties" object. */
+	TFunction<void(FJsonObject& EntryProperties)> DescribeStructural;
+
+	bool HasValue() const
+	{
+		return static_cast<bool>(EncodeValue) && static_cast<bool>(DecodeValue);
+	}
+};
+
+/** Per-thread stack behind FOverridesSchemaScope; exported so the modules that push one (Collections) share it. */
+struct PCGEXTOOLSETPROPERTIES_API FPCGExOverridesSchemaStack
+{
+	using FValue = const TArray<FInstancedStruct>*;
+	static TArray<FValue>& Get();
+};
+
+namespace PCGExPropertyMediator
+{
+	PCGEXTOOLSETPROPERTIES_API void RegisterHooks(const UScriptStruct* Struct, const FPCGExPropertyMediatorHooks& Hooks);
+	PCGEXTOOLSETPROPERTIES_API void UnregisterHooks(const UScriptStruct* Struct);
+
+	/** Exact registration, else the output-type default when the type's output has a dialect shape, else null. */
+	PCGEXTOOLSETPROPERTIES_API const FPCGExPropertyMediatorHooks* FindHooks(const UScriptStruct* Struct);
+
+	PCGEXTOOLSETPROPERTIES_API bool HasValueSupport(const UScriptStruct* Struct);
+
+	/** Catalog types with no value hooks. Empty is the expected state; a test keeps it that way. */
+	PCGEXTOOLSETPROPERTIES_API void GetTypesWithoutValueSupport(TArray<FName>& OutTypeNames);
+
+	/** The default: value through TryWriteValue / TryReadValue at the property's output type. */
+	PCGEXTOOLSETPROPERTIES_API FPCGExPropertyMediatorHooks MakeOutputTypeHooks();
+
+	/**
+	 * Schema a decoding override set syncs to when its target is not schema-parallel yet (fresh rows). Pushed by
+	 * the binding that knows the host; nested scopes stack, the innermost wins.
+	 */
+	class FOverridesSchemaScope
+	{
+	public:
+		explicit FOverridesSchemaScope(TArray<FInstancedStruct> InSchema)
+			: Schema(MoveTemp(InSchema))
+			  , Scope(&Schema)
+		{
+		}
+
+		FOverridesSchemaScope(const FOverridesSchemaScope&) = delete;
+		FOverridesSchemaScope& operator=(const FOverridesSchemaScope&) = delete;
+
+		static const TArray<FInstancedStruct>* Current()
+		{
+			const FPCGExOverridesSchemaStack::FValue* Top = TPCGExMediatorScope<FPCGExOverridesSchemaStack>::Current();
+			return Top ? *Top : nullptr;
+		}
+
+	private:
+		TArray<FInstancedStruct> Schema;
+		TPCGExMediatorScope<FPCGExOverridesSchemaStack> Scope;
+	};
+
+	/** Numeric range as { "min", "max", "clampMin", "clampMax" }; null when nothing is clamped. */
+	PCGEXTOOLSETPROPERTIES_API TSharedPtr<FJsonObject> EncodeRange(const FPCGExNumericRange& Range);
+	PCGEXTOOLSETPROPERTIES_API bool DecodeRange(const FJsonObject& Json, FPCGExNumericRange& OutRange);
+	PCGEXTOOLSETPROPERTIES_API TSharedPtr<FJsonObject> DescribeRange();
+
+	/** Enum class by path, short or prefixed name; user-defined enum assets load. Null (with a diagnostic) when missing. */
+	PCGEXTOOLSETPROPERTIES_API UEnum* ResolveEnum(const FString& Path);
+
+	/** Class by path, short or prefixed name; Blueprint classes load. Null (with a diagnostic) when missing; "" resolves to null silently. */
+	PCGEXTOOLSETPROPERTIES_API UClass* ResolveClass(const FString& Path);
+
+	/** Hooks for the toolkit's own property types. Called by the Properties editor module. */
+	PCGEXTOOLSETPROPERTIES_API void RegisterBuiltInHooks();
+	PCGEXTOOLSETPROPERTIES_API void UnregisterBuiltInHooks();
+}

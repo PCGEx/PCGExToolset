@@ -5,6 +5,7 @@
 
 #include "CoreMinimal.h"
 #include "PCGExEditorModuleInterface.h"
+#include "PCGExMediatorRegistry.h"
 
 /** Properties authoring surface over the mediator hub: owns the per-type hook registry every sibling domain registers into. */
 class FPCGExToolsetPropertiesModule final : public IPCGExEditorModuleInterface
@@ -14,4 +15,8 @@ class FPCGExToolsetPropertiesModule final : public IPCGExEditorModuleInterface
 public:
 	virtual void StartupModule() override;
 	virtual void ShutdownModule() override;
+
+private:
+	/** The formats, bindings, actions and guide this module registers. */
+	FPCGExMediatorDomain MediatorDomain;
 };
