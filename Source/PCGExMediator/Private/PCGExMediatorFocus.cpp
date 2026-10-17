@@ -4,11 +4,13 @@
 #include "PCGExMediatorFocus.h"
 
 #include "PCGExMediatorDiagnostics.h"
+#include "PCGExMediatorLevel.h"
 #include "PCGExMediatorRegistry.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetToolsModule.h"
 #include "ContentBrowserModule.h"
 #include "Dom/JsonObject.h"
+#include "Engine/World.h"
 #include "Editor.h"
 #include "GameFramework/Actor.h"
 #include "IAssetTools.h"
@@ -213,7 +215,13 @@ UObject* PCGExMediator::ResolveAlias(const FString& Alias)
 		const FStage Stages[] = {&CollectLevelSelection, &CollectContentBrowser};
 		return Resolve(Stages, TEXT("nothing bound is selected in the level or the Content Browser; name a target by path"));
 	}
-	Report(EPCGExMediatorSeverity::Error, FString::Printf(TEXT("'%s' is not a target alias; the aliases are %s and %s"), *Alias.Left(64), FocusedAlias, SelectedAlias));
+	if (Alias.Equals(LevelAlias, ESearchCase::IgnoreCase))
+	{
+		UWorld* World = GetEditorWorld();
+		if (!World) { Report(EPCGExMediatorSeverity::Error, TEXT("no level is open in the editor")); }
+		return World;
+	}
+	Report(EPCGExMediatorSeverity::Error, FString::Printf(TEXT("'%s' is not a target alias; the aliases are %s, %s and %s"), *Alias.Left(64), FocusedAlias, SelectedAlias, LevelAlias));
 	return nullptr;
 }
 

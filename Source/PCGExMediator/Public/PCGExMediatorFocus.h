@@ -19,6 +19,8 @@ namespace PCGExMediator
 {
 	constexpr const TCHAR* const FocusedAlias = TEXT("@focused");
 	constexpr const TCHAR* const SelectedAlias = TEXT("@selected");
+	/** The level editor's world: what level-creating actions target and DescribeTarget lists the hosts of. */
+	constexpr const TCHAR* const LevelAlias = TEXT("@level");
 
 	/** True for any "@..." target; the alias is resolved by ResolveAlias, which refuses unknown ones. */
 	PCGEXMEDIATOR_API bool IsTargetAlias(const FString& Target);

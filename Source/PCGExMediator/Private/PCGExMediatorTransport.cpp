@@ -6,11 +6,13 @@
 #include "PCGExMediatorConverter.h"
 #include "PCGExMediatorDiagnostics.h"
 #include "PCGExMediatorFocus.h"
+#include "PCGExMediatorLevel.h"
 #include "PCGExMediatorLookup.h"
 #include "PCGExMediatorReflection.h"
 #include "PCGExMediatorRegistry.h"
 #include "PCGExMediatorSchema.h"
 #include "Dom/JsonObject.h"
+#include "Engine/World.h"
 #include "Dom/JsonValue.h"
 #include "JsonObjectConverter.h"
 #include "Misc/FileHelper.h"
@@ -481,6 +483,17 @@ TSharedPtr<FJsonObject> PCGExMediator::DescribeTarget(const UObject* Host)
 	{
 		Report(EPCGExMediatorSeverity::Error, TEXT("no target"));
 		return nullptr;
+	}
+	// A world has no document; its description is the inventory of hosts it holds.
+	if (const UWorld* World = Cast<UWorld>(Host))
+	{
+		TSharedPtr<FJsonObject> S = DescribeLevel(World);
+		if (S.IsValid())
+		{
+			S->SetStringField(TEXT("target"), Host->GetPathName());
+			S->SetStringField(Keys::Class, Host->GetClass()->GetPathName());
+		}
+		return S;
 	}
 	const TSharedPtr<const FPCGExMediatorBinding> Binding = FPCGExMediatorRegistry::FindBinding(Host->GetClass());
 	if (!Binding.IsValid())

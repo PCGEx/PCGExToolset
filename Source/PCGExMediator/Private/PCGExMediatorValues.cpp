@@ -327,6 +327,25 @@ bool PCGExMediator::Values::Decode(const TSharedPtr<FJsonValue>& Json, const EPC
 				*static_cast<FRotator*>(OutValue) = FRotator(R[0], R[1], R[2]);
 				return true;
 			}
+			// A partial rotator object merges onto the current value: { "yaw": 90 } turns without touching pitch or roll.
+			const TSharedPtr<FJsonObject>* Partial = nullptr;
+			if (Json.IsValid() && Json->TryGetObject(Partial) && (*Partial)->Values.Num() > 0 && !(*Partial)->HasField(TEXT("x")))
+			{
+				FRotator Merged = *static_cast<FRotator*>(OutValue);
+				double* Slots[3] = {&Merged.Pitch, &Merged.Yaw, &Merged.Roll};
+				for (int32 i = 0; i < 3; ++i)
+				{
+					const TSharedPtr<FJsonValue>* Field = (*Partial)->Values.Find(PYR[i]);
+					if (!Field) { continue; }
+					if (!ReadNumber(*Field, *Slots[i])) { return Fail(TEXT("a rotator {pitch, yaw, roll}, any subset"), Json); }
+				}
+				for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*Partial)->Values)
+				{
+					if (Pair.Key != PYR[0] && Pair.Key != PYR[1] && Pair.Key != PYR[2]) { return Fail(TEXT("a rotator {pitch, yaw, roll}"), Json); }
+				}
+				*static_cast<FRotator*>(OutValue) = Merged;
+				return true;
+			}
 			FQuat Q;
 			if (!ReadRotation(Json, Q)) { return Fail(TEXT("a rotator {pitch, yaw, roll} or a quat [x, y, z, w]"), Json); }
 			*static_cast<FRotator*>(OutValue) = Q.Rotator();

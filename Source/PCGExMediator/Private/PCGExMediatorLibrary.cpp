@@ -5,6 +5,7 @@
 
 #include "PCGExMediatorDiagnostics.h"
 #include "PCGExMediatorFocus.h"
+#include "PCGExMediatorLevel.h"
 #include "PCGExMediatorLookup.h"
 #include "PCGExMediatorTransport.h"
 #include "AssetToolsModule.h"
@@ -192,6 +193,29 @@ FString UPCGExMediatorLibrary::Open(const FString& Target)
 	{
 		PCGExMediator::FScope Scope(Diagnostics);
 		if (UObject* Object = PCGExMediator::ResolveTarget(Target.TrimStartAndEnd())) { Result = PCGExMediator::OpenTarget(Object); }
+	}
+	if (!Result.IsValid()) { return Failure(Diagnostics); }
+	Result->SetBoolField(TEXT("ok"), true);
+	Result->SetField(TEXT("diagnostics"), Diagnostics.ToJson());
+	return PCGExMediator::ToString(Result.ToSharedRef(), false);
+}
+
+FString UPCGExMediatorLibrary::SpawnActor(const FString& ClassNameOrPath, const FString& TransformJson, const FString& Label)
+{
+	using namespace PCGExMediatorLibrary;
+
+	TSharedPtr<FJsonValue> Transform;
+	if (!TransformJson.TrimStartAndEnd().IsEmpty())
+	{
+		const TSharedPtr<FJsonObject> Obj = PCGExMediator::FromString(TransformJson);
+		if (!Obj.IsValid()) { return Failure(TEXT("TransformJson is not a JSON object; the dialect is { \"location\": [x, y, z], \"rotation\"?: ..., \"scale\"?: [x, y, z] }")); }
+		Transform = MakeShared<FJsonValueObject>(Obj);
+	}
+	FPCGExMediatorDiagnostics Diagnostics;
+	TSharedPtr<FJsonObject> Result;
+	{
+		PCGExMediator::FScope Scope(Diagnostics);
+		Result = PCGExMediator::SpawnActorFromRequest(ClassNameOrPath.TrimStartAndEnd(), Transform, Label.TrimStartAndEnd());
 	}
 	if (!Result.IsValid()) { return Failure(Diagnostics); }
 	Result->SetBoolField(TEXT("ok"), true);

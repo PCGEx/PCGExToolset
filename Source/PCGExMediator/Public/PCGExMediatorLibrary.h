@@ -69,6 +69,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "PCGEx|Mediator")
 	static FString Open(const FString& Target);
 
+	/**
+	 * Spawns an actor of a class (path, short or C++ name) into the open level at a transform in the dialect ("" =
+	 * identity), labelled when a label is given; undoable. Mechanics only: a class with creation rules of its own (a
+	 * Valency context volume or cage) goes through its domain action instead. { ok, actor, label, class, bound } or a
+	 * failure object.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "PCGEx|Mediator")
+	static FString SpawnActor(const FString& ClassNameOrPath, const FString& TransformJson, const FString& Label);
+
 	/** { guides: [{ domain, hosts, text, examples }] }: every domain's authoring guide, in registration order. */
 	UFUNCTION(BlueprintCallable, Category = "PCGEx|Mediator")
 	static FString DescribeGuides();
