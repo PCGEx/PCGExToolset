@@ -486,7 +486,7 @@ bool PCGExMediator::Reflect::DecodeInputShorthand(const UScriptStruct* Struct, v
 		// dialect's "constant": the reflected shape is told apart by its exact-case property names first.
 		auto HasExact = [&Obj](const FString& Key)
 		{
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Obj.Values) { if (Pair.Key.Equals(Key, ESearchCase::CaseSensitive)) { return true; } }
+			for (const TPair<FString, TSharedPtr<FJsonValue>> Pair : Obj.Values) { if (Pair.Key.Equals(Key, ESearchCase::CaseSensitive)) { return true; } }
 			return false;
 		};
 		const bool bReflected = HasExact(L.Input->GetName()) || HasExact(L.Constant->GetName()) || HasExact(L.Attribute->GetName()) || HasExact(L.Cleanup->GetName());
@@ -637,7 +637,7 @@ bool PCGExMediator::Reflect::DecodeWeightCurve(const TSharedPtr<FJsonValue>& Jso
 			Report(EPCGExMediatorSeverity::Error, TEXT("expected [[t, v], ...] or { \"asset\": <CurveFloat path>, \"points\": [[t, v], ...] }"));
 			return false;
 		}
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Obj.Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Pair : Obj.Values)
 		{
 			if (Pair.Key != CurveKeys::Asset && Pair.Key != CurveKeys::Points) { Report(EPCGExMediatorSeverity::Warning, Pair.Key.Left(128), TEXT("not a weight curve key; ignored")); }
 		}
@@ -1026,7 +1026,7 @@ bool PCGExMediator::Reflect::DecodeStruct(const UStruct* Struct, void* Memory, c
 	using namespace PCGExMediatorReflection;
 
 	bool bOk = true;
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : In.Values)
+	for (const TPair<FString, TSharedPtr<FJsonValue>> Pair : In.Values)
 	{
 		if (IgnoredKeys.Contains(Pair.Key)) { continue; }
 		FPathScope P(Pair.Key);

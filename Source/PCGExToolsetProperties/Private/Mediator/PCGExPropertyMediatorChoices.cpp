@@ -429,7 +429,7 @@ bool PCGExPropertyMediatorChoices::DecodePatches(const FJsonObject& In, FPCGExPr
 	ResolveInherited(Temp, Inherited);
 
 	bool bOk = true;
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*PatchesPtr)->Values)
+	for (const TPair<FString, TSharedPtr<FJsonValue>> Pair : (*PatchesPtr)->Values)
 	{
 		FPathScope N(Pair.Key);
 		if (Pair.Key.IsEmpty() || Pair.Key.Len() >= NAME_SIZE)

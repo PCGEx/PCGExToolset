@@ -97,7 +97,7 @@ namespace PCGExPropertyMediatorFormats
 
 		bool bOk = true;
 		TSet<FName> Named;
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : In.Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Pair : In.Values)
 		{
 			FPathScope P(Pair.Key);
 			if (Pair.Key.IsEmpty() || Pair.Key.Len() >= NAME_SIZE)

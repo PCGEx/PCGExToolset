@@ -323,7 +323,7 @@ bool PCGExMediator::ImportObject(const FJsonObject& Doc, UObject* Host)
 	}
 
 	FPathScope MembersPath(Keys::Members);
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*Members)->Values)
+	for (const TPair<FString, TSharedPtr<FJsonValue>> Pair : (*Members)->Values)
 	{
 		if (!Binding->Members.Contains(SafeName(Pair.Key)))
 		{

@@ -339,7 +339,7 @@ bool PCGExMediator::Values::Decode(const TSharedPtr<FJsonValue>& Json, const EPC
 					if (!Field) { continue; }
 					if (!ReadNumber(*Field, *Slots[i])) { return Fail(TEXT("a rotator {pitch, yaw, roll}, any subset"), Json); }
 				}
-				for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*Partial)->Values)
+				for (const TPair<FString, TSharedPtr<FJsonValue>> Pair : (*Partial)->Values)
 				{
 					if (Pair.Key != PYR[0] && Pair.Key != PYR[1] && Pair.Key != PYR[2]) { return Fail(TEXT("a rotator {pitch, yaw, roll}"), Json); }
 				}

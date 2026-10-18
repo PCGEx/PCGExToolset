@@ -56,7 +56,7 @@ TSharedRef<FJsonObject> PCGExMediator::DumpAsJson()
 	Doc->SetNumberField(TEXT("version"), 1);
 	Doc->SetStringField(TEXT("generated"), FDateTime::UtcNow().ToIso8601());
 	Doc->SetObjectField(TEXT("toolkit"), Toolkit);
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Root->Values) { Doc->SetField(Pair.Key, Pair.Value); }
+	for (const TPair<FString, TSharedPtr<FJsonValue>> Pair : Root->Values) { Doc->SetField(Pair.Key, Pair.Value); }
 	return Doc;
 }
 
