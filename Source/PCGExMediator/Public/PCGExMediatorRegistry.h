@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 
 class FJsonObject;
+class FPCGExMediatorParams;
 struct IJsonObjectStructConverter;
 
 /**
@@ -56,6 +57,13 @@ struct PCGEXMEDIATOR_API FPCGExMediatorBinding
 	/** Optional. Must invoke Import exactly once; Decoded gives the scratch value of an earlier member (null = the live one stands). */
 	TFunction<void(UObject* Host, FName Member, FPCGExMediatorDecodedMember Decoded, TFunctionRef<void()> Import)> WrapImport;
 
+	/**
+	 * Optional. Runs once every present member has decoded and before any is applied, under the import's diagnostics;
+	 * Decoded gives each member's scratch (null = the live value stands). An Error reported here refuses the import,
+	 * host untouched: the place for checks that span members or the whole document, which a converter cannot see.
+	 */
+	TFunction<void(const UObject* Host, FPCGExMediatorDecodedMember Decoded)> Validate;
+
 	/** Optional. Runs after every member applied, inside the import transaction, for host work no edit hook covers. */
 	TFunction<void(UObject* Host)> PostImport;
 
@@ -86,10 +94,12 @@ struct PCGEXMEDIATOR_API FPCGExMediatorAction
 	const UClass* TargetClass = nullptr;
 
 	/**
-	 * Runs on the game thread inside a transaction named Summary. Returns the result object (null = failure, reported
-	 * at the current path); a "changed": false field cancels the transaction so nothing lands in the undo history.
+	 * Runs on the game thread inside a transaction named Summary. Returns the result object (null = failure); a
+	 * "changed": false field cancels the transaction so nothing lands in the undo history. Parameters are read through
+	 * Params only, which paths what it reports under params/<key>; a keyless Report is a run-time finding at the
+	 * action root, or under a stage segment (FPathScope) the action pushes.
 	 */
-	TFunction<TSharedPtr<FJsonObject>(UObject* Target, const FJsonObject& Params)> Run;
+	TFunction<TSharedPtr<FJsonObject>(UObject* Target, const FPCGExMediatorParams& Params)> Run;
 
 	/** JSON Schema of Params. */
 	TFunction<TSharedPtr<FJsonObject>()> DescribeParams;

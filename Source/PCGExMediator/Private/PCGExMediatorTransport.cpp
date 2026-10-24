@@ -8,6 +8,7 @@
 #include "PCGExMediatorFocus.h"
 #include "PCGExMediatorLevel.h"
 #include "PCGExMediatorLookup.h"
+#include "PCGExMediatorParams.h"
 #include "PCGExMediatorReflection.h"
 #include "PCGExMediatorRegistry.h"
 #include "PCGExMediatorSchema.h"
@@ -344,6 +345,7 @@ bool PCGExMediator::ImportObject(const FJsonObject& Doc, UObject* Host)
 	FPCGExMediatorDiagnostics Local;
 	{
 		FScope Scope(Local);
+		bool bDecoded = true;
 		for (const FName& Member : Binding->Members)
 		{
 			const TSharedPtr<FJsonValue> Json = (*Members)->TryGetField(Member.ToString());
@@ -357,14 +359,20 @@ bool PCGExMediator::ImportObject(const FJsonObject& Doc, UObject* Host)
 			if (!Property)
 			{
 				Report(EPCGExMediatorSeverity::Error, Member.ToString(), TEXT("bound member not found on the host class"));
+				bDecoded = false;
 				break;
 			}
 
 			TUniquePtr<FPropertyScratch> Scratch = MakeUnique<FPropertyScratch>(Property);
 			const bool bOk = DecodeMember(*Binding, Host, Property, Json, *Scratch, DecodedMember);
 			Decoded.Add(MoveTemp(Scratch));
-			if (!bOk) { break; }
+			if (!bOk)
+			{
+				bDecoded = false;
+				break;
+			}
 		}
+		if (bDecoded && Binding->Validate) { Binding->Validate(Host, DecodedMember); }
 	}
 	Forward(Local);
 	if (Local.HasErrors()) { return false; }
@@ -536,11 +544,8 @@ TSharedPtr<FJsonObject> PCGExMediator::RunAction(const FName ActionId, UObject* 
 
 	const FJsonObject NoParams;
 	FScopedTransaction Transaction(FText::FromString(Action->Summary.IsEmpty() ? ActionId.ToString() : Action->Summary));
-	TSharedPtr<FJsonObject> Result;
-	{
-		FPathScope P(TEXT("params"));
-		Result = Action->Run(Target, Params.IsValid() ? *Params : NoParams);
-	}
+	// Nothing is pushed around Run: the params view paths parameter reads, a keyless report is the action's own finding.
+	TSharedPtr<FJsonObject> Result = Action->Run(Target, FPCGExMediatorParams(Params.IsValid() ? *Params : NoParams));
 	bool bChanged = true;
 	if (!Result.IsValid() || (Result->TryGetBoolField(TEXT("changed"), bChanged) && !bChanged))
 	{

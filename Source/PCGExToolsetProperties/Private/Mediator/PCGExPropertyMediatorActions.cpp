@@ -4,6 +4,7 @@
 #include "Mediator/PCGExPropertyMediatorActions.h"
 
 #include "PCGExMediatorDiagnostics.h"
+#include "PCGExMediatorParams.h"
 #include "PCGExMediatorRegistry.h"
 #include "PCGExMediatorSchema.h"
 #include "PCGExPropertyChoicesAlign.h"
@@ -33,12 +34,13 @@ namespace PCGExPropertyMediatorActions
 		return nullptr;
 	}
 
-	TSharedPtr<FJsonObject> RunAlignChoices(UObject* Target, const FJsonObject& Params)
+	TSharedPtr<FJsonObject> RunAlignChoices(UObject* Target, const FPCGExMediatorParams& Params)
 	{
 		FString PropertyText;
-		if (!Params.TryGetStringField(Keys::Property, PropertyText) || PropertyText.IsEmpty() || PropertyText.Len() >= NAME_SIZE)
+		if (!Params.Require(Keys::Property, PropertyText, TEXT("the name of the property whose choices rows align to"))) { return nullptr; }
+		if (PropertyText.IsEmpty() || PropertyText.Len() >= NAME_SIZE)
 		{
-			Report(EPCGExMediatorSeverity::Error, Keys::Property, TEXT("missing: the name of the property whose choices rows align to"));
+			Params.Report(EPCGExMediatorSeverity::Error, Keys::Property, TEXT("expected a non-empty property name"));
 			return nullptr;
 		}
 		const FName PropertyName(*PropertyText);
@@ -50,7 +52,7 @@ namespace PCGExPropertyMediatorActions
 			const UPCGExPropertySchemaAsset* Declaring = FindDeclaringAsset(Asset, PropertyName);
 			if (!Declaring)
 			{
-				Report(EPCGExMediatorSeverity::Error, Keys::Property, FString::Printf(TEXT("'%s' is not a property %s declares or imports"), *PropertyText, *Asset->GetPathName()));
+				Params.Report(EPCGExMediatorSeverity::Error, Keys::Property, FString::Printf(TEXT("'%s' is not a property %s declares or imports"), *PropertyText, *Asset->GetPathName()));
 				return nullptr;
 			}
 			// The asset's own import rows are what its importers fall back to: they go first.
