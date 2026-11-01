@@ -3,6 +3,7 @@
 
 #include "PCGExToolsetCollections.h"
 
+#include "Mediator/PCGExCollectionsMediatorActions.h"
 #include "Mediator/PCGExCollectionsMediatorBindings.h"
 #include "Mediator/PCGExCollectionsMediatorFormats.h"
 #include "Mediator/PCGExCollectionsMediatorGuide.h"
@@ -13,10 +14,12 @@ void FPCGExToolsetCollectionsModule::StartupModule()
 	IPCGExEditorModuleInterface::StartupModule();
 
 	// Value hooks for the collection property types, entry formats (one per registered collection type, siblings
-	// included), the collection / Distribute Tuple bindings and the guide.
+	// included), Variant row formats, the collection / Variant / Distribute Tuple bindings, the material-slots read
+	// and the guide.
 	PCGExCollectionsMediator::RegisterHooks();
 	PCGExCollectionsMediatorFormats::Register(MediatorDomain);
 	PCGExCollectionsMediatorBindings::Register(MediatorDomain);
+	PCGExCollectionsMediatorActions::Register(MediatorDomain);
 	PCGExCollectionsMediatorGuide::Register(MediatorDomain);
 }
 

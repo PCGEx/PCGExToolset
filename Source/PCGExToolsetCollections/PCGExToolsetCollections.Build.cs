@@ -5,8 +5,9 @@ using System;
 using System.IO;
 using UnrealBuildTool;
 
-// Collections authoring surface: entry formats per registered collection type, Omni rows, asset staging, the
-// collection-base and Distribute Tuple bindings, the CollectionEntry / Range value hooks and the collections guide.
+// Collections authoring surface: entry formats per registered collection type, Omni and Variant rows, asset staging,
+// the collection-base, Variant and Distribute Tuple bindings, the material-slots read action, the CollectionEntry /
+// Range value hooks and the collections guide.
 public class PCGExToolsetCollections : ModuleRules
 {
 	public PCGExToolsetCollections(ReadOnlyTargetRules Target) : base(Target)

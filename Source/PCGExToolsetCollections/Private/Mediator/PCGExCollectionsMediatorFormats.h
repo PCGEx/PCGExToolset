@@ -35,6 +35,34 @@ protected:
 	virtual bool Decode(const FJsonObject& In, FPCGExOmniCollectionEntry& Temp, const FPCGExOmniCollectionEntry& Live) const override;
 };
 
+/** A plain struct by its authored fields only (see FPCGExCollectionEntryJsonConverter), sparse; no curated keys. */
+class FPCGExAuthoredStructJsonConverter final : public FPCGExMediatorScriptStructConverter
+{
+public:
+	explicit FPCGExAuthoredStructJsonConverter(const UScriptStruct* InStruct);
+
+protected:
+	virtual bool Encode(const void* Value, FJsonObject& Out) const override;
+	virtual bool Decode(const FJsonObject& In, void* Temp, const void* Live) const override;
+};
+
+/**
+ * A Variant row (FPCGExVariantEntryOverride or FPCGExVariantPathOverride): its own fields by UPROPERTY name, and "Entry"
+ * in the Omni row shape ("type" picks or switches the payload struct). An unset payload is omitted; null clears it.
+ */
+class FPCGExVariantRowJsonConverter final : public FPCGExMediatorScriptStructConverter
+{
+public:
+	explicit FPCGExVariantRowJsonConverter(const UScriptStruct* InStruct);
+
+protected:
+	virtual bool Encode(const void* Value, FJsonObject& Out) const override;
+	virtual bool Decode(const FJsonObject& In, void* Temp, const void* Live) const override;
+
+private:
+	const FStructProperty* EntryProperty = nullptr;
+};
+
 /** Staging data: authored "sockets" and "boundsModifier" both ways; "path" and "bounds" written for information only. */
 class FPCGExAssetStagingDataJsonConverter final : public TPCGExMediatorStructConverter<FPCGExAssetStagingData>
 {
@@ -47,6 +75,9 @@ namespace PCGExCollectionsMediatorFormats
 {
 	inline const FName OmniEntryFormatId = FName(TEXT("pcgex.omni-collection-entry"));
 	inline const FName StagingFormatId = FName(TEXT("pcgex.asset-staging"));
+	inline const FName VariantSourceFormatId = FName(TEXT("pcgex.variant-source"));
+	inline const FName VariantEntryOverrideFormatId = FName(TEXT("pcgex.variant-entry-override"));
+	inline const FName VariantPathOverrideFormatId = FName(TEXT("pcgex.variant-path-override"));
 
 	/** "pcgex.collection-entry/<TypeId>" */
 	FName EntryFormatId(FName TypeId);

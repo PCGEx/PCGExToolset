@@ -9,6 +9,7 @@
 #include "PCGExMediatorRegistry.h"
 #include "PCGExMediatorSchema.h"
 #include "PCGExMediatorValues.h"
+#include "Collections/PCGExVariantCollection.h"
 #include "Core/PCGExAssetCollectionTypes.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -74,6 +75,29 @@ namespace PCGExCollectionsMediatorFormats
 		return Reflect::DecodeStruct(Struct, &Entry, In, &IsAuthoredProperty, EntryOwnKeys);
 	}
 
+	// A heterogeneous payload (Omni row, Variant row): "type" picks or switches the struct, then the row merges in.
+	bool DecodeInstancedEntry(const FJsonObject& In, FInstancedStruct& InOutPayload, const TCHAR* RowNoun)
+	{
+		FString TypeText;
+		if (In.TryGetStringField(Keys::Type, TypeText))
+		{
+			FPathScope P(Keys::Type);
+			PCGExAssetCollection::FTypeInfo Info;
+			if (!PCGExAssetCollection::FTypeRegistry::Get().GetInfo(SafeName(TypeText), Info) || !Info.EntryStruct)
+			{
+				Report(EPCGExMediatorSeverity::Error, FString::Printf(TEXT("'%s' is not a collection type with an entry struct"), *TypeText.Left(128)));
+				return false;
+			}
+			if (InOutPayload.GetScriptStruct() != Info.EntryStruct) { InOutPayload.InitializeAs(Info.EntryStruct); }
+		}
+		if (!InOutPayload.IsValid())
+		{
+			Report(EPCGExMediatorSeverity::Error, Keys::Type, FString::Printf(TEXT("required for a new %s"), RowNoun));
+			return false;
+		}
+		return DecodeEntry(InOutPayload.GetScriptStruct(), *InOutPayload.GetMutablePtr<FPCGExAssetCollectionEntry>(), In);
+	}
+
 	void AddEntryOwnSchemas(FJsonObject& Props, const TSharedRef<FJsonObject>& TypeSchema)
 	{
 		Props.SetObjectField(Keys::Type, TypeSchema);
@@ -111,6 +135,27 @@ namespace PCGExCollectionsMediatorFormats
 		AddEntryOwnSchemas(**Props, Schema::Enum(TypeIds, TEXT("the row's entry type; required for a new row, switches the payload struct on an existing one")));
 
 		Schema::Describe(S.ToSharedRef(), TEXT("Omni row: the base entry fields listed here plus the type's own fields, described by pcgex.collection-entry/<type>. Sparse export, merging import."));
+		return S;
+	}
+
+	const FStructProperty* FindVariantRowPayload(const UScriptStruct* Struct)
+	{
+		const FStructProperty* Payload = FindFProperty<FStructProperty>(Struct, TEXT("Entry"));
+		return Payload && Payload->Struct == FInstancedStruct::StaticStruct() ? Payload : nullptr;
+	}
+
+	TSharedPtr<FJsonObject> DescribeVariantRow(const UScriptStruct* Struct)
+	{
+		const FStructProperty* Payload = FindVariantRowPayload(Struct);
+		TSharedPtr<FJsonObject> S = Reflect::DescribeStruct(Struct, [Payload](const FProperty* P) { return P != Payload && IsAuthoredProperty(P); }, 0);
+		const TSharedPtr<FJsonObject>* Props = nullptr;
+		if (!S.IsValid() || !Payload || !S->TryGetObjectField(TEXT("properties"), Props)) { return S; }
+
+		if (const TSharedPtr<FJsonObject> Row = DescribeOmniRow())
+		{
+			(*Props)->SetObjectField(Payload->GetName(), Schema::Describe(Row.ToSharedRef(), TEXT("the replacement entry as an Omni row (\"type\" required for a new payload); null unsets it, leaving the row inert")));
+		}
+		Schema::Describe(S.ToSharedRef(), FString::Printf(TEXT("%s: fields by name, Entry as an Omni row. Sparse export, merging import."), *Struct->GetName()));
 		return S;
 	}
 
@@ -206,26 +251,90 @@ bool FPCGExOmniCollectionEntryJsonConverter::Encode(const FPCGExOmniCollectionEn
 
 bool FPCGExOmniCollectionEntryJsonConverter::Decode(const FJsonObject& In, FPCGExOmniCollectionEntry& Temp, const FPCGExOmniCollectionEntry&) const
 {
+	return PCGExCollectionsMediatorFormats::DecodeInstancedEntry(In, Temp.Entry, TEXT("Omni row"));
+}
+
+#pragma endregion
+
+#pragma region FPCGExAuthoredStructJsonConverter
+
+FPCGExAuthoredStructJsonConverter::FPCGExAuthoredStructJsonConverter(const UScriptStruct* InStruct)
+	: FPCGExMediatorScriptStructConverter(InStruct)
+{
+}
+
+bool FPCGExAuthoredStructJsonConverter::Encode(const void* Value, FJsonObject& Out) const
+{
 	using namespace PCGExCollectionsMediatorFormats;
 
-	FString TypeText;
-	if (In.TryGetStringField(Keys::Type, TypeText))
+	FInstancedStruct Defaults;
+	Defaults.InitializeAs(GetStruct());
+	Reflect::EncodeStruct(GetStruct(), Value, Defaults.GetMemory(), Out, &IsAuthoredProperty);
+	return true;
+}
+
+bool FPCGExAuthoredStructJsonConverter::Decode(const FJsonObject& In, void* Temp, const void*) const
+{
+	using namespace PCGExCollectionsMediatorFormats;
+
+	return Reflect::DecodeStruct(GetStruct(), Temp, In, &IsAuthoredProperty);
+}
+
+#pragma endregion
+
+#pragma region FPCGExVariantRowJsonConverter
+
+FPCGExVariantRowJsonConverter::FPCGExVariantRowJsonConverter(const UScriptStruct* InStruct)
+	: FPCGExMediatorScriptStructConverter(InStruct)
+{
+	EntryProperty = PCGExCollectionsMediatorFormats::FindVariantRowPayload(InStruct);
+	check(EntryProperty);
+}
+
+bool FPCGExVariantRowJsonConverter::Encode(const void* Value, FJsonObject& Out) const
+{
+	using namespace PCGExCollectionsMediatorFormats;
+
+	const UScriptStruct* RowStruct = GetStruct();
+	FInstancedStruct Defaults;
+	Defaults.InitializeAs(RowStruct);
+	Reflect::EncodeStruct(RowStruct, Value, Defaults.GetMemory(), Out, [this](const FProperty* P) { return P != EntryProperty && IsAuthoredProperty(P); });
+
+	const FInstancedStruct& Payload = *EntryProperty->ContainerPtrToValuePtr<FInstancedStruct>(Value);
+	if (const FPCGExAssetCollectionEntry* Entry = Payload.GetPtr<FPCGExAssetCollectionEntry>())
 	{
-		FPathScope P(Keys::Type);
-		PCGExAssetCollection::FTypeInfo Info;
-		if (!PCGExAssetCollection::FTypeRegistry::Get().GetInfo(SafeName(TypeText), Info) || !Info.EntryStruct)
-		{
-			Report(EPCGExMediatorSeverity::Error, FString::Printf(TEXT("'%s' is not a collection type with an entry struct"), *TypeText.Left(128)));
-			return false;
-		}
-		if (Temp.Entry.GetScriptStruct() != Info.EntryStruct) { Temp.Entry.InitializeAs(Info.EntryStruct); }
+		FPathScope P(EntryProperty->GetName());
+		TSharedRef<FJsonObject> Body = MakeShared<FJsonObject>();
+		EncodeEntry(Payload.GetScriptStruct(), *Entry, *Body);
+		Out.SetObjectField(EntryProperty->GetName(), Body);
 	}
-	if (!Temp.Entry.IsValid())
+	return true;
+}
+
+bool FPCGExVariantRowJsonConverter::Decode(const FJsonObject& In, void* Temp, const void*) const
+{
+	using namespace PCGExCollectionsMediatorFormats;
+
+	const FString EntryKey = EntryProperty->GetName();
+	const FString OwnKeys[] = {EntryKey};
+	if (!Reflect::DecodeStruct(GetStruct(), Temp, In, [this](const FProperty* P) { return P != EntryProperty && IsAuthoredProperty(P); }, OwnKeys)) { return false; }
+
+	const TSharedPtr<FJsonValue> Json = In.TryGetField(EntryKey);
+	if (!Json.IsValid()) { return true; }
+
+	FPathScope P(EntryKey);
+	FInstancedStruct& Payload = *EntryProperty->ContainerPtrToValuePtr<FInstancedStruct>(Temp);
+	if (Json->Type == EJson::Null)
 	{
-		Report(EPCGExMediatorSeverity::Error, Keys::Type, TEXT("required for a new Omni row"));
+		Payload.Reset();
+		return true;
+	}
+	if (Json->Type != EJson::Object)
+	{
+		Report(EPCGExMediatorSeverity::Error, TEXT("expected an entry row object, or null to unset it"));
 		return false;
 	}
-	return DecodeEntry(Temp.Entry.GetScriptStruct(), *Temp.GetPayload(), In);
+	return DecodeInstancedEntry(*Json->AsObject(), Payload, TEXT("Variant row payload"));
 }
 
 #pragma endregion
@@ -287,6 +396,21 @@ void PCGExCollectionsMediatorFormats::Register(FPCGExMediatorDomain& Domain)
 	                                                          TEXT("Omni collection row: any registered entry type, chosen by \"type\"."));
 	Domain.AddFormat<FPCGExAssetStagingDataJsonConverter>(StagingFormatId, 1, FPCGExAssetStagingData::StaticStruct(), &DescribeStaging,
 	                                                       TEXT("Entry staging data: authored sockets and bounds modifier."));
+
+	const UScriptStruct* Source = FPCGExVariantSource::StaticStruct();
+	Domain.AddFormat<FPCGExAuthoredStructJsonConverter>(VariantSourceFormatId, 1, Source, [Source]()
+	{
+		TSharedPtr<FJsonObject> S = Reflect::DescribeStruct(Source, &IsAuthoredProperty, 1);
+		if (S.IsValid()) { Schema::Describe(S.ToSharedRef(), TEXT("Variant source group: the collection it themes and its rows. Sparse export, merging import.")); }
+		return S;
+	}, TEXT("Variant source group: the source collection and its entry override rows."), Source);
+
+	const UScriptStruct* EntryOverride = FPCGExVariantEntryOverride::StaticStruct();
+	Domain.AddFormat<FPCGExVariantRowJsonConverter>(VariantEntryOverrideFormatId, 1, EntryOverride, [EntryOverride]() { return DescribeVariantRow(EntryOverride); },
+	                                                 TEXT("Variant source row: the source EntryId it replaces and the replacement entry."), EntryOverride);
+	const UScriptStruct* PathOverride = FPCGExVariantPathOverride::StaticStruct();
+	Domain.AddFormat<FPCGExVariantRowJsonConverter>(VariantPathOverrideFormatId, 1, PathOverride, [PathOverride]() { return DescribeVariantRow(PathOverride); },
+	                                                 TEXT("Variant path rule: the staged asset path it matches and the replacement entry."), PathOverride);
 
 	RegisterEntryFormats();
 	if (!S.ModulesChangedHandle.IsValid())
