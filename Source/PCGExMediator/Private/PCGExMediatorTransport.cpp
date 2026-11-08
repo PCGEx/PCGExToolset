@@ -511,12 +511,21 @@ TSharedPtr<FJsonObject> PCGExMediator::DescribeTarget(const UObject* Host)
 	}
 	if (Binding->DescribeInstance)
 	{
-		if (TSharedPtr<FJsonObject> S = Binding->DescribeInstance(Host))
+		FPCGExMediatorDiagnostics Local;
+		TSharedPtr<FJsonObject> S;
+		{
+			FScope Scope(Local);
+			S = Binding->DescribeInstance(Host);
+		}
+		Forward(Local);
+		if (S.IsValid())
 		{
 			S->SetStringField(TEXT("target"), Host->GetPathName());
 			S->SetStringField(Keys::Class, Host->GetClass()->GetPathName());
 			return S;
 		}
+		// Null with an Error is the binding refusing this host; null without one leaves the class schema to stand in.
+		if (Local.HasErrors()) { return nullptr; }
 	}
 	return DescribeObject(Host->GetClass());
 }

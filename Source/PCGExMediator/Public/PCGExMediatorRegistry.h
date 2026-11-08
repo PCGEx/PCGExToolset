@@ -54,7 +54,7 @@ struct PCGEXMEDIATOR_API FPCGExMediatorBinding
 	/** Export and import order. Each must be a UPROPERTY of HostClass (or a parent). */
 	TArray<FName> Members;
 
-	/** Optional. Must invoke Import exactly once; Decoded gives the scratch value of an earlier member (null = the live one stands). */
+	/** Optional. Invokes Import exactly once, or reports an Error and skips it to refuse; Decoded gives the scratch value of an earlier member (null = the live one stands). */
 	TFunction<void(UObject* Host, FName Member, FPCGExMediatorDecodedMember Decoded, TFunctionRef<void()> Import)> WrapImport;
 
 	/**
@@ -69,7 +69,8 @@ struct PCGEXMEDIATOR_API FPCGExMediatorBinding
 
 	/**
 	 * Optional. What THIS instance offers an author, as data (not a schema): e.g. a schema host's resolved properties
-	 * with their effective choices and lock. Null or unset = DescribeTarget falls back to the class's object schema.
+	 * with their effective choices and lock. Null with an Error refuses the host; null without one, or unset, falls back
+	 * to the class's object schema.
 	 */
 	TFunction<TSharedPtr<FJsonObject>(const UObject* Host)> DescribeInstance;
 

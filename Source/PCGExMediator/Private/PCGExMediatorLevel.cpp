@@ -10,6 +10,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Editor.h"
+#include "Engine/Level.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/Actor.h"
@@ -52,15 +53,32 @@ UWorld* PCGExMediator::GetEditorWorld()
 	return GEditor ? GEditor->GetEditorWorldContext().World() : nullptr;
 }
 
+bool PCGExMediator::RequireOpenLevel(const UWorld* World)
+{
+	if (!World)
+	{
+		Report(EPCGExMediatorSeverity::Error, TEXT("no world"));
+		return false;
+	}
+	// Not open: never initialized, or Inactive (a map the editor initialized on load); TActorIterator lists either.
+	if (!World->IsInitialized() || World->WorldType == EWorldType::Inactive)
+	{
+		Report(EPCGExMediatorSeverity::Error, TEXT("level is not open; open it in the editor to describe it"));
+		return false;
+	}
+	return true;
+}
+
+bool PCGExMediator::RequireHostLevelOpen(const UObject* Host)
+{
+	return !Host || !Host->GetTypedOuter<ULevel>() || RequireOpenLevel(Host->GetWorld());
+}
+
 TSharedPtr<FJsonObject> PCGExMediator::DescribeLevel(const UWorld* World)
 {
 	using namespace PCGExMediatorLevel;
 
-	if (!World)
-	{
-		Report(EPCGExMediatorSeverity::Error, TEXT("no world"));
-		return nullptr;
-	}
+	if (!RequireOpenLevel(World)) { return nullptr; }
 	TArray<TSharedPtr<const FPCGExMediatorAction>> Actions;
 	FPCGExMediatorRegistry::GetActions(Actions);
 

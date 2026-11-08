@@ -78,7 +78,7 @@ namespace PCGExMediator
 
 	/**
 	 * What a bound INSTANCE offers an author (its binding's DescribeInstance: e.g. resolved properties with effective
-	 * choices), else the class's object schema. Null (with a diagnostic) when the host has no binding.
+	 * choices), else the class's object schema. Null (with a diagnostic) when the host has no binding or its binding refuses it.
 	 */
 	PCGEXMEDIATOR_API TSharedPtr<FJsonObject> DescribeTarget(const UObject* Host);
 

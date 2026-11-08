@@ -121,7 +121,7 @@ namespace PCGExMediatorReflection
 #endif
 	}
 
-	// Identical_InContainer on a weight curve compares key handles, minted per instance: two equal curves never match.
+	// Weight curves compare by what their dialect carries (asset, key time / value / mode), not by full reflected identity.
 	bool IdenticalInDialect(const FProperty* Property, const void* A, const void* B)
 	{
 		if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property); StructProperty && StructProperty->Struct == FPCGExWeightCurve::StaticStruct())
@@ -1087,7 +1087,7 @@ TSharedPtr<FJsonObject> PCGExMediator::Reflect::DescribeProperty(const FProperty
 		}
 		if (Struct == FInstancedStruct::StaticStruct())
 		{
-			return Schema::Typed(TEXT("object"), TEXT("instanced struct: \"_structType\" (struct path) plus its fields in the engine's reflected shape"));
+			return Schema::Typed(TEXT("object"), TEXT("instanced struct: \"_structType\" (struct path, deriving from the property's BaseStruct) plus its fields in the engine's reflected shape; naming a type other than the held one resets the value to that type's defaults before the fields apply"));
 		}
 		if (Depth <= 0)
 		{

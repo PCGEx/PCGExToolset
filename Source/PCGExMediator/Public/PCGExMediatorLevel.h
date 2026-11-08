@@ -20,7 +20,13 @@ namespace PCGExMediator
 	/** The level editor's world; null outside the editor. */
 	PCGEXMEDIATOR_API UWorld* GetEditorWorld();
 
-	/** { world, path, dirty, count, hosts: [{ kind, class, path, label, owner? }] }: every actor and component whose class is bound or is an action's target. */
+	/** False with an Error at the current path unless World is open: initialized and not Inactive (the level editor's world, PIE and game worlds pass); every level entry point checks it first. */
+	PCGEXMEDIATOR_API bool RequireOpenLevel(const UWorld* World);
+
+	/** RequireOpenLevel on the level Host is placed in; a host outside any level (a class default, a template) passes. */
+	PCGEXMEDIATOR_API bool RequireHostLevelOpen(const UObject* Host);
+
+	/** { world, path, dirty, count, hosts: [{ kind, class, path, label, owner? }] }: every actor and component whose class is bound or is an action's target; null (with RequireOpenLevel's Error) for a level that is not open. */
 	PCGEXMEDIATOR_API TSharedPtr<FJsonObject> DescribeLevel(const UWorld* World);
 
 	/** A transactional actor of Class at Transform, labelled and filed when asked; null with a diagnostic (bad class, game world, spawn refused). Transacts with the caller. */
