@@ -538,6 +538,7 @@ bool FPCGExEnumSelectorJsonConverter::Encode(const FPCGExEnumSelector& Value, FJ
 {
 	using namespace PCGExPropertyMediatorFormats;
 
+	// Single-value form only: a converter never sees the field's PCGExEnumFlags meta, so flag-mask hosts encode through their own hooks.
 	if (Value.Class) { Out.SetStringField(Keys::Enum, Value.Class->GetPathName()); }
 	Out.SetField(Keys::Value, Values::EncodeEnum(Value.Class, Value.Value));
 	return true;
