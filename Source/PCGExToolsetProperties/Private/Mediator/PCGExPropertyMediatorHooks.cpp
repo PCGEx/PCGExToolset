@@ -7,6 +7,7 @@
 #include "PCGExMediatorLookup.h"
 #include "PCGExMediatorSchema.h"
 #include "PCGExMediatorValues.h"
+#include "PCGExEnumSelector.h"
 #include "PCGExProperty.h"
 #include "PCGExPropertyTypes.h"
 #include "Dom/JsonObject.h"
@@ -85,19 +86,108 @@ namespace PCGExPropertyMediatorHooks
 
 	// --- Enum ---
 
+	// Every entry but the generated _MAX, as Values::EncodeEnum names them.
+	int32 NumNamedEntries(const UEnum* Enum)
+	{
+		return Enum->ContainsExistingMax() ? Enum->NumEnums() - 1 : Enum->NumEnums();
+	}
+
+	bool IsSingleFlag(const int64 Mask)
+	{
+		const uint64 Bits = static_cast<uint64>(Mask);
+		return Bits != 0 && (Bits & (Bits - 1)) == 0;
+	}
+
+	// The names of the single-bit flags set in Mask (an empty array for 0); a bit no such flag covers keeps it a number.
+	TSharedPtr<FJsonValue> EncodeFlagMask(const UEnum* Enum, const int64 Mask)
+	{
+		TArray<TSharedPtr<FJsonValue>> Names;
+		int64 Remaining = Mask;
+		for (int32 i = 0, Num = NumNamedEntries(Enum); i < Num; ++i)
+		{
+			const int64 Bit = PCGExEnumSelector::GetFlagMask(Enum, i);
+			if (IsSingleFlag(Bit) && (Remaining & Bit) == Bit)
+			{
+				Names.Add(MakeShared<FJsonValueString>(Enum->GetAuthoredNameStringByIndex(i)));
+				Remaining &= ~Bit;
+			}
+		}
+		if (Remaining == 0) { return MakeShared<FJsonValueArray>(Names); }
+		return Values::Encode<int64>(Mask);
+	}
+
+	// A flag name, an array of flag names (OR-ed), or a number whose every bit is a flag. Unknown name = error.
+	bool DecodeFlagMask(const UEnum* Enum, const TSharedPtr<FJsonValue>& Json, int64& OutMask)
+	{
+		auto MaskOf = [Enum](const FString& Name, int64& OutBit) -> bool
+		{
+			const int32 Index = Enum->GetIndexByNameString(Name, EGetByNameFlags::CheckAuthoredName);
+			if (Index == INDEX_NONE || Index >= NumNamedEntries(Enum))
+			{
+				Report(EPCGExMediatorSeverity::Error, FString::Printf(TEXT("'%s' is not a flag of %s"), *Name, *Enum->GetName()));
+				return false;
+			}
+			OutBit = PCGExEnumSelector::GetFlagMask(Enum, Index);
+			return true;
+		};
+
+		if (!Json.IsValid())
+		{
+			Report(EPCGExMediatorSeverity::Error, TEXT("expected a flag name, an array of flag names or a number"));
+			return false;
+		}
+
+		if (Json->Type == EJson::String) { return MaskOf(Json->AsString(), OutMask); }
+
+		if (Json->Type == EJson::Array)
+		{
+			int64 Combined = 0;
+			const TArray<TSharedPtr<FJsonValue>>& Array = Json->AsArray();
+			for (int32 i = 0; i < Array.Num(); ++i)
+			{
+				FPathScope Scope(i);
+				if (!Array[i].IsValid() || Array[i]->Type != EJson::String)
+				{
+					Report(EPCGExMediatorSeverity::Error, TEXT("expected a flag name"));
+					return false;
+				}
+				int64 Bit = 0;
+				if (!MaskOf(Array[i]->AsString(), Bit)) { return false; }
+				Combined |= Bit;
+			}
+			OutMask = Combined;
+			return true;
+		}
+
+		int64 Number = 0;
+		if (!Values::Decode<int64>(Json, Number)) { return false; }
+
+		int64 AllFlags = 0;
+		for (int32 i = 0, Num = NumNamedEntries(Enum); i < Num; ++i) { AllFlags |= PCGExEnumSelector::GetFlagMask(Enum, i); }
+		if ((Number & ~AllFlags) != 0)
+		{
+			Report(EPCGExMediatorSeverity::Error, FString::Printf(TEXT("%lld is not a combination of %s flags"), Number, *Enum->GetName()));
+			return false;
+		}
+		OutMask = Number;
+		return true;
+	}
+
 	FPCGExPropertyMediatorHooks MakeEnumHooks()
 	{
 		FPCGExPropertyMediatorHooks H;
 		H.EncodeValue = [](const FPCGExProperty& P)
 		{
 			const FPCGExProperty_Enum& E = static_cast<const FPCGExProperty_Enum&>(P);
+			if (E.IsFlagMask()) { return EncodeFlagMask(E.Value.Class, E.Value.Value); }
 			return Values::EncodeEnum(E.Value.Class, E.Value.Value);
 		};
 		H.DecodeValue = [](FPCGExProperty& P, const TSharedPtr<FJsonValue>& Json)
 		{
 			FPCGExProperty_Enum& E = static_cast<FPCGExProperty_Enum&>(P);
 			int64 V = 0;
-			if (!Values::DecodeEnum(E.Value.Class, Json, V)) { return false; }
+			const bool bDecoded = E.IsFlagMask() ? DecodeFlagMask(E.Value.Class, Json, V) : Values::DecodeEnum(E.Value.Class, Json, V);
+			if (!bDecoded) { return false; }
 			E.Value.Value = V;
 			return true;
 		};
