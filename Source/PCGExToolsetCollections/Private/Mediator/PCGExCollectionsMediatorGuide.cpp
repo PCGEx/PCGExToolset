@@ -17,7 +17,9 @@ namespace PCGExCollectionsMediatorGuide
 		Guide.Text =
 			TEXT("ASSET COLLECTIONS (every UPCGExAssetCollection subclass: mesh, actor, Omni, ...) bind three members, applied in this ")
 			TEXT("order: CollectionProperties (a property schema the entry overrides resolve against), CategoryOverrides (per-category ")
-			TEXT("override sets) and Entries. Entries merge BY POSITION: row i of the document merges into row i of the host, rows past ")
+			TEXT("override sets, plus Tags every entry of that category carries on top of its own) and Entries. CategoryOverrides ")
+			TEXT("rows also merge by position, matched by index and never by their Category field: send every existing row in host ")
+			TEXT("order. Entries merge BY POSITION: row i of the document merges into row i of the host, rows past ")
 			TEXT("the host's count are created, rows the document lacks are removed; inside a row an absent key keeps the existing value ")
 			TEXT("(the struct default on a new row). To append without touching existing rows, send one placeholder row per existing ")
 			TEXT("entry: { \"type\": \"<TypeId>\" }.\n")
