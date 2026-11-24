@@ -344,6 +344,7 @@ bool FPCGExVariantRowJsonConverter::Decode(const FJsonObject& In, void* Temp, co
 bool FPCGExAssetStagingDataJsonConverter::Encode(const FPCGExAssetStagingData& Value, FJsonObject& Out) const
 {
 	using namespace PCGExCollectionsMediatorFormats;
+	namespace Keys = PCGExCollectionsMediatorFormats::Keys;
 
 	const UScriptStruct* Struct = FPCGExAssetStagingData::StaticStruct();
 	auto Write = [&](const TCHAR* Key, const FName Member, const void* Field)
@@ -369,6 +370,7 @@ bool FPCGExAssetStagingDataJsonConverter::Encode(const FPCGExAssetStagingData& V
 bool FPCGExAssetStagingDataJsonConverter::Decode(const FJsonObject& In, FPCGExAssetStagingData& Temp, const FPCGExAssetStagingData&) const
 {
 	using namespace PCGExCollectionsMediatorFormats;
+	namespace Keys = PCGExCollectionsMediatorFormats::Keys;
 
 	const UScriptStruct* Struct = FPCGExAssetStagingData::StaticStruct();
 	auto Apply = [&](const TCHAR* Key, const FName Member) -> bool

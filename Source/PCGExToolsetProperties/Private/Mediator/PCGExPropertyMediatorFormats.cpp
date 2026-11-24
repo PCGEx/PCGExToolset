@@ -495,6 +495,7 @@ bool FPCGExPropertyOverridesJsonConverter::Decode(const FJsonObject& In, FPCGExP
 bool FPCGExWeightedPropertyOverridesJsonConverter::Encode(const FPCGExWeightedPropertyOverrides& Value, FJsonObject& Out) const
 {
 	using namespace PCGExPropertyMediatorFormats;
+	namespace Keys = PCGExPropertyMediatorFormats::Keys;
 
 	Out.SetNumberField(Keys::Weight, Value.Weight);
 	TSharedRef<FJsonObject> Values = MakeShared<FJsonObject>();
@@ -509,6 +510,7 @@ bool FPCGExWeightedPropertyOverridesJsonConverter::Encode(const FPCGExWeightedPr
 bool FPCGExWeightedPropertyOverridesJsonConverter::Decode(const FJsonObject& In, FPCGExWeightedPropertyOverrides& Temp, const FPCGExWeightedPropertyOverrides&) const
 {
 	using namespace PCGExPropertyMediatorFormats;
+	namespace Keys = PCGExPropertyMediatorFormats::Keys;
 
 	if (const TSharedPtr<FJsonValue> Weight = In.TryGetField(Keys::Weight))
 	{
@@ -537,6 +539,7 @@ bool FPCGExWeightedPropertyOverridesJsonConverter::Decode(const FJsonObject& In,
 bool FPCGExEnumSelectorJsonConverter::Encode(const FPCGExEnumSelector& Value, FJsonObject& Out) const
 {
 	using namespace PCGExPropertyMediatorFormats;
+	namespace Keys = PCGExPropertyMediatorFormats::Keys;
 
 	// Single-value form only: a converter never sees the field's PCGExEnumFlags meta, so flag-mask hosts encode through their own hooks.
 	if (Value.Class) { Out.SetStringField(Keys::Enum, Value.Class->GetPathName()); }
@@ -547,6 +550,7 @@ bool FPCGExEnumSelectorJsonConverter::Encode(const FPCGExEnumSelector& Value, FJ
 bool FPCGExEnumSelectorJsonConverter::Decode(const FJsonObject& In, FPCGExEnumSelector& Temp, const FPCGExEnumSelector&) const
 {
 	using namespace PCGExPropertyMediatorFormats;
+	namespace Keys = PCGExPropertyMediatorFormats::Keys;
 
 	FString EnumPath;
 	if (In.TryGetStringField(Keys::Enum, EnumPath))
